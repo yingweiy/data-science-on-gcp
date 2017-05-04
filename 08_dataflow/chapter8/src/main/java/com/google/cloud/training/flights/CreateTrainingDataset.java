@@ -83,31 +83,6 @@ public class CreateTrainingDataset {
 
   final static Duration AVERAGING_INTERVAL = Duration.standardHours(1);
   
-  public static class MovingWindow extends PartitioningWindowFn<Object, IntervalWindow> {
-    private final Duration averagingInterval;
-    
-    public MovingWindow(Duration averagingInterval) {
-      this.averagingInterval = averagingInterval;
-    }
-
-    private static final Duration ONE_MSEC = Duration.millis(1);
-    @Override
-    public IntervalWindow assignWindow(Instant ts) {
-      return new IntervalWindow(ts.minus(averagingInterval), ts.plus(ONE_MSEC));
-    }
-
-    @Override
-    public boolean isCompatible(WindowFn<?, ?> other) {
-     return equals(other);
-    }
-
-    @Override
-    public Coder<IntervalWindow> windowCoder() {
-      return IntervalWindow.getCoder();
-    }
-    
-  }
-  
   public static void main(String[] args) {
     MyOptions options = PipelineOptionsFactory.fromArgs(args).withValidation().as(MyOptions.class);
     // options.setStreaming(true);

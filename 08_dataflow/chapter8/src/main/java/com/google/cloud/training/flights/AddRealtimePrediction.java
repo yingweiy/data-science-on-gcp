@@ -53,7 +53,6 @@ import org.slf4j.LoggerFactory;
 import com.google.api.services.bigquery.model.TableFieldSchema;
 import com.google.api.services.bigquery.model.TableRow;
 import com.google.api.services.bigquery.model.TableSchema;
-import com.google.cloud.training.flights.CreateTrainingDataset.MovingWindow;
 import com.google.cloud.training.flights.Flight.INPUTCOLS;
 
 /**
