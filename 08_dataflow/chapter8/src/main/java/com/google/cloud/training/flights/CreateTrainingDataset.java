@@ -22,6 +22,7 @@ import org.apache.beam.runners.dataflow.DataflowRunner;
 import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.PipelineResult;
+import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.io.TextIO;
 import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO;
 import org.apache.beam.sdk.options.Default;
@@ -35,8 +36,9 @@ import org.apache.beam.sdk.transforms.join.CoGbkResult;
 import org.apache.beam.sdk.transforms.join.CoGroupByKey;
 import org.apache.beam.sdk.transforms.join.KeyedPCollectionTuple;
 import org.apache.beam.sdk.transforms.windowing.IntervalWindow;
-import org.apache.beam.sdk.transforms.windowing.SlidingWindows;
+import org.apache.beam.sdk.transforms.windowing.PartitioningWindowFn;
 import org.apache.beam.sdk.transforms.windowing.Window;
+import org.apache.beam.sdk.transforms.windowing.WindowFn;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionView;
@@ -67,7 +69,7 @@ public class CreateTrainingDataset {
     void setFullDataset(boolean b);
 
     @Description("Path of the output directory")
-    @Default.String("gs://cloud-training-demos-ml/flights/chapter8/output/")
+    @Default.String("gs://cloud-training-demos-ml/flights/chapter8/output2/")
     String getOutput();
 
     void setOutput(String s);
@@ -80,7 +82,32 @@ public class CreateTrainingDataset {
   }
 
   final static Duration AVERAGING_INTERVAL = Duration.standardHours(1);
-  final static Duration AVERAGING_FREQUENCY = Duration.standardMinutes(5);
+  
+  public static class MovingWindow extends PartitioningWindowFn<Object, IntervalWindow> {
+    private final Duration averagingInterval;
+    
+    public MovingWindow(Duration averagingInterval) {
+      this.averagingInterval = averagingInterval;
+    }
+
+    private static final Duration ONE_MSEC = Duration.millis(1);
+    @Override
+    public IntervalWindow assignWindow(Instant ts) {
+      return new IntervalWindow(ts.minus(averagingInterval), ts.plus(ONE_MSEC));
+    }
+
+    @Override
+    public boolean isCompatible(WindowFn<?, ?> other) {
+     return equals(other);
+    }
+
+    @Override
+    public Coder<IntervalWindow> windowCoder() {
+      return IntervalWindow.getCoder();
+    }
+    
+  }
+  
   public static void main(String[] args) {
     MyOptions options = PipelineOptionsFactory.fromArgs(args).withValidation().as(MyOptions.class);
     // options.setStreaming(true);
@@ -106,9 +133,7 @@ public class CreateTrainingDataset {
 
     PCollectionView<Map<String, Double>> avgDepDelay = depDelays.apply("depdelay->map", View.asMap());
 
-    PCollection<Flight> hourlyFlights = allFlights.apply(Window.<Flight> into(SlidingWindows//
-        .of(AVERAGING_INTERVAL)//
-        .every(AVERAGING_FREQUENCY))); // .discardingFiredPanes());
+    PCollection<Flight> hourlyFlights = allFlights.apply(Window.<Flight> into(new MovingWindow(AVERAGING_INTERVAL)));
 
     PCollection<KV<String, Double>> avgArrDelay = computeAverageArrivalDelay(hourlyFlights);
 
@@ -209,19 +234,6 @@ public class CreateTrainingDataset {
 
     PCollection<KV<String, Flight>> airportFlights = //
         hourlyFlights //
-            .apply("InLatestSlice", ParDo.of(new DoFn<Flight, Flight>() {
-              @ProcessElement
-              public void processElement(ProcessContext c, IntervalWindow window) throws Exception {
-                Instant endOfWindow = window.maxTimestamp();
-                Instant flightTimestamp = c.element().getEventTimestamp();
-                long msecs = endOfWindow.getMillis() - flightTimestamp.getMillis();
-                if (msecs < AVERAGING_FREQUENCY.getMillis()) {
-                  c.output(c.element());
-                } else {
-                  throw new RuntimeException("endOfWindow=" + endOfWindow + " flightTimeStamp=" + flightTimestamp);
-                }
-              }
-            }))//
             .apply("AddDepDelay", ParDo.withSideInputs(avgDepDelay).of(new DoFn<Flight, Flight>() {
              
               @ProcessElement

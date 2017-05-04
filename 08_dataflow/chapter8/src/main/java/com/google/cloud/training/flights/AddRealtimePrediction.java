@@ -40,7 +40,7 @@ import org.apache.beam.sdk.transforms.Flatten;
 import org.apache.beam.sdk.transforms.GroupByKey;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.View;
-import org.apache.beam.sdk.transforms.windowing.SlidingWindows;
+import org.apache.beam.sdk.transforms.windowing.FixedWindows;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
@@ -53,6 +53,7 @@ import org.slf4j.LoggerFactory;
 import com.google.api.services.bigquery.model.TableFieldSchema;
 import com.google.api.services.bigquery.model.TableRow;
 import com.google.api.services.bigquery.model.TableSchema;
+import com.google.cloud.training.flights.CreateTrainingDataset.MovingWindow;
 import com.google.cloud.training.flights.Flight.INPUTCOLS;
 
 /**
@@ -132,10 +133,7 @@ public class AddRealtimePrediction {
     // If we need to average over 60 minutes and speedup is 30x,
     // then we need to average over 2 minutes of sped-up stream
     Duration averagingInterval = CreateTrainingDataset.AVERAGING_INTERVAL.dividedBy(options.getSpeedupFactor());
-    Duration averagingFrequency = CreateTrainingDataset.AVERAGING_FREQUENCY.dividedBy(options.getSpeedupFactor());
-    PCollection<Flight> hourlyFlights = allFlights.apply(Window.<Flight> into(SlidingWindows//
-        .of(averagingInterval)//
-        .every(averagingFrequency))); // .discardingFiredPanes());
+    PCollection<Flight> hourlyFlights = allFlights.apply(Window.<Flight> into(new MovingWindow(averagingInterval)));
 
     PCollection<KV<String, Double>> avgArrDelay = CreateTrainingDataset.computeAverageArrivalDelay(hourlyFlights);
 
@@ -165,6 +163,7 @@ public class AddRealtimePrediction {
     public PCollection<FlightPred> addPredictionInBatches(PCollection<Flight> outFlights) {
       final int NUM_BATCHES = 2;
       PCollection<FlightPred> lines = outFlights //
+          .apply("1-minute", Window.<Flight> into(FixedWindows.of(Duration.standardMinutes(1)))) //
           .apply("Batch->Flight", ParDo.of(new DoFn<Flight, KV<String, Flight>>() {
             @ProcessElement
             public void processElement(ProcessContext c) throws Exception {
@@ -233,7 +232,7 @@ public class AddRealtimePrediction {
       for (String eventType : new String[]{"wheelsoff", "arrived"}){
         String topic = "projects/" + options.getProject() + "/topics/" + eventType;
         PCollection<Flight> flights = p.apply(eventType + ":read",
-            PubsubIO.<String> read().topic(topic).withCoder(StringUtf8Coder.of()).timestampLabel("EventTimeStamp")) //
+            PubsubIO.<String> read().topic(topic).withCoder(StringUtf8Coder.of())) //
             .apply(eventType + ":parse", ParDo.of(new DoFn<String, Flight>() {
               @ProcessElement
               public void processElement(ProcessContext c) throws Exception {

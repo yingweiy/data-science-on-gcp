@@ -91,7 +91,7 @@ public class FlightsMLService {
     HttpContent content = new ByteArrayContent("application/json", json.getBytes());
     HttpRequest request = requestFactory.buildRequest("POST", url, content);
     request.setUnsuccessfulResponseHandler(new HttpBackOffUnsuccessfulResponseHandler(new ExponentialBackOff()));
-    request.setReadTimeout(10000);
+    request.setReadTimeout(5 * 60 * 1000); // 5 minutes
            
     // parse response
     String response = request.execute().parseAsString();
