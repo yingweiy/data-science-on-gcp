@@ -41,7 +41,6 @@ public class MovingWindow extends PartitioningWindowFn<Object, IntervalWindow> {
     return IntervalWindow.getCoder();
   }
   
-  
   public static void main(String[] args) {
     String[] events = {
         "2015-01-04T01:00:00Z,a,10",
@@ -74,6 +73,20 @@ public class MovingWindow extends PartitioningWindowFn<Object, IntervalWindow> {
           }
         }));
     p.run().waitUntilFinish();
+    
+    /*
+     Expected result should include:
+2015-01-04T01:30:00.000Z a (10+12)/2=11
+2015-01-04T01:40:00.000Z b (11+13)/2=12
+     Actual result:
+2015-01-04T01:10:00.000Z b 11.0
+2015-01-04T01:00:00.000Z a 10.0
+2015-01-04T01:30:00.000Z b 13.0
+2015-01-04T01:20:00.000Z a 12.0
+2015-01-04T01:50:00.000Z b 15.0
+2015-01-04T01:40:00.000Z a 14.0
+2015-01-04T02:00:00.000Z a 16.0
+     */
   }
   
 }
