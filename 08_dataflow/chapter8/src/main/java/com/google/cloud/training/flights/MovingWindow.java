@@ -1,6 +1,8 @@
 package com.google.cloud.training.flights;
 
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.coders.Coder;
@@ -9,8 +11,10 @@ import org.apache.beam.sdk.transforms.Create;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.Mean;
 import org.apache.beam.sdk.transforms.ParDo;
+import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
+import org.apache.beam.sdk.transforms.windowing.GlobalWindow;
 import org.apache.beam.sdk.transforms.windowing.IntervalWindow;
-import org.apache.beam.sdk.transforms.windowing.PartitioningWindowFn;
+import org.apache.beam.sdk.transforms.windowing.NonMergingWindowFn;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.transforms.windowing.WindowFn;
 import org.apache.beam.sdk.values.KV;
@@ -18,7 +22,7 @@ import org.joda.time.Duration;
 import org.joda.time.Instant;
 
 @SuppressWarnings("serial")
-public class MovingWindow extends PartitioningWindowFn<Object, IntervalWindow> {
+public class MovingWindow extends NonMergingWindowFn<Object, IntervalWindow> {
   private final Duration averagingInterval;
   
   public MovingWindow(Duration averagingInterval) {
@@ -26,7 +30,7 @@ public class MovingWindow extends PartitioningWindowFn<Object, IntervalWindow> {
   }
 
   private static final Duration ONE_MSEC = Duration.millis(1);
-  @Override
+
   public IntervalWindow assignWindow(Instant ts) {
     return new IntervalWindow(ts.minus(averagingInterval), ts.plus(ONE_MSEC));
   }
@@ -39,6 +43,21 @@ public class MovingWindow extends PartitioningWindowFn<Object, IntervalWindow> {
   @Override
   public Coder<IntervalWindow> windowCoder() {
     return IntervalWindow.getCoder();
+  }
+  
+  @Override
+  public Collection<IntervalWindow> assignWindows(AssignContext c) {
+    return Collections.singletonList(assignWindow(c.timestamp()));
+  }
+  
+  @Override
+  public IntervalWindow getSideInputWindow(BoundedWindow mainWindow) {
+    if (mainWindow instanceof GlobalWindow) {
+      throw new IllegalArgumentException(
+          "Attempted to get side input window for GlobalWindow from non-global WindowFn");
+    }
+    Instant end = mainWindow.maxTimestamp();
+    return new IntervalWindow(end.minus(averagingInterval), end.plus(ONE_MSEC));
   }
   
   public static void main(String[] args) {
