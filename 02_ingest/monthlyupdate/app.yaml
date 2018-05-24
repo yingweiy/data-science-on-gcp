@@ -7,7 +7,7 @@ manual_scaling:
 
 #[START env]
 env_variables:
-    CLOUD_STORAGE_BUCKET: cloud-training-demos-ml
+    CLOUD_STORAGE_BUCKET: touhy
 #[END env]
 
 handlers:
